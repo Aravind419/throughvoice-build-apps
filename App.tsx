@@ -81,8 +81,14 @@ const DEFAULT_FILES: FileData[] = [
 const App: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [files, setFiles] = useState<FileData[]>(() => {
-    const saved = localStorage.getItem('code-project');
-    return saved ? JSON.parse(saved) : DEFAULT_FILES;
+    try {
+      const saved = localStorage.getItem('code-project');
+      return saved ? JSON.parse(saved) : DEFAULT_FILES;
+    } catch (error) {
+      console.error("Failed to parse project from local storage:", error);
+      localStorage.removeItem('code-project'); // Clear corrupted data
+      return DEFAULT_FILES;
+    }
   });
   const [activeFileName, setActiveFileName] = useState(files[0]?.fileName || 'index.html');
   const [isLoading, setIsLoading] = useState(false);

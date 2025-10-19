@@ -112,9 +112,9 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
   };
 
   return (
-    <div className="flex h-full bg-gray-800 rounded-lg shadow-inner border border-gray-700 overflow-hidden">
+    <div className="flex flex-col sm:flex-row h-full bg-gray-800 rounded-lg shadow-inner border border-gray-700 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-1/3 max-w-xs flex flex-col bg-gray-900/40 border-r border-gray-700">
+      <div className="w-full sm:w-1/3 sm:max-w-xs flex flex-col bg-gray-900/40 border-b sm:border-b-0 sm:border-r border-gray-700">
         <div className="flex-shrink-0 flex justify-between items-center p-2 border-b border-gray-700">
             <div role="tablist" aria-label="Sidebar View" className="flex items-center space-x-1">
                 <button

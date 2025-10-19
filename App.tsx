@@ -128,14 +128,19 @@ const App: React.FC = () => {
       }
       
       debounceTimeoutRef.current = window.setTimeout(() => {
-        if (transcript.trim()) {
+        if (transcript.trim() && !isLoading) {
           submissionSourceRef.current = 'voice';
-          stopListening();
           handleSubmit(transcript);
         }
       }, 1500); // 1.5s delay
     }
-  }, [transcript, isListening]);
+    
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [transcript, isListening, isLoading]);
   
   const resetProject = () => {
     setFiles(DEFAULT_FILES);
@@ -190,6 +195,10 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
   };
 
  const handleSubmit = async (promptToSubmit?: string) => {
+    if (submissionSourceRef.current === 'voice') {
+      stopListening();
+    }
+    
     const finalPrompt = promptToSubmit ?? prompt;
     if (!finalPrompt.trim() || isLoading) return;
 
@@ -348,7 +357,7 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
       <main ref={mainContentRef} className="flex-grow flex flex-col lg:flex-row p-4 gap-4 overflow-hidden">
         {/* Desktop - Resizable Panes */}
         <div 
-            className={`hidden lg:flex flex-col transition-width duration-75 ${isFullscreen ? 'w-0' : ''}`} 
+            className={`hidden lg:flex flex-col transition-all duration-75 ${isFullscreen ? 'w-0' : ''}`} 
             style={!isFullscreen ? { width: `${editorWidth}%` } : {}}
         >
             <CodeWorkspace 
@@ -371,7 +380,7 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
         ></div>
 
         <div 
-            className={`hidden lg:flex flex-col transition-width duration-75 ${isFullscreen ? 'w-full' : ''}`}
+            className={`hidden lg:flex flex-col transition-all duration-75 ${isFullscreen ? 'w-full' : ''}`}
             style={!isFullscreen ? { width: `${100 - editorWidth}%` } : {}}
         >
           <Preview 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { InputBar } from './components/InputBar';
 import { CodeWorkspace, FileData } from './components/CodeWorkspace';
@@ -98,9 +98,18 @@ const App: React.FC = () => {
   const [isSnippetsLoading, setIsSnippetsLoading] = useState(false);
   const [snippetsError, setSnippetsError] = useState<string | null>(null);
   
+  // State for resizable panes and mobile layout
+  const [editorWidth, setEditorWidth] = useState(50);
+  const [isResizing, setIsResizing] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
   const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
   
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
+  const submissionSourceRef = useRef<'voice' | 'manual'>('manual');
+  const debounceTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     localStorage.setItem('code-project', JSON.stringify(files));
@@ -109,11 +118,24 @@ const App: React.FC = () => {
     }
   }, [files, activeFileName]);
 
+  // Effect for handling auto-submission after speech
   useEffect(() => {
-    if (transcript) {
+    if (isListening && transcript) {
       setPrompt(transcript);
+
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      
+      debounceTimeoutRef.current = window.setTimeout(() => {
+        if (transcript.trim()) {
+          submissionSourceRef.current = 'voice';
+          stopListening();
+          handleSubmit(transcript);
+        }
+      }, 1500); // 1.5s delay
     }
-  }, [transcript]);
+  }, [transcript, isListening]);
   
   const resetProject = () => {
     setFiles(DEFAULT_FILES);
@@ -167,8 +189,9 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
     }
   };
 
- const handleSubmit = async () => {
-    if (!prompt.trim() || isLoading) return;
+ const handleSubmit = async (promptToSubmit?: string) => {
+    const finalPrompt = promptToSubmit ?? prompt;
+    if (!finalPrompt.trim() || isLoading) return;
 
     setIsLoading(true);
     setError(null);
@@ -179,7 +202,7 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
     try {
       const stream = await ai.models.generateContentStream({
         model: 'gemini-2.5-pro',
-        contents: prompt,
+        contents: finalPrompt,
         config: {
           systemInstruction: SYSTEM_INSTRUCTION_STREAM,
         },
@@ -247,6 +270,10 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
         );
         return formattedFiles;
       });
+
+      if (submissionSourceRef.current === 'voice') {
+        startListening();
+      }
     }
   };
 
@@ -277,37 +304,125 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
     return processedHtml;
   }, [files]);
   
-  const editorPaneClasses = isFullscreen ? 'hidden' : 'lg:w-1/2';
-  const previewPaneClasses = isFullscreen ? 'w-full h-full' : 'lg:w-1/2';
+  // Resizing logic
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !mainContentRef.current) return;
+      const mainRect = mainContentRef.current.getBoundingClientRect();
+      const newWidthPercent = ((e.clientX - mainRect.left) / mainRect.width) * 100;
+      setEditorWidth(Math.max(20, Math.min(newWidthPercent, 80)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizing]);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 text-white font-sans">
+    <div className="flex flex-col min-h-screen bg-gray-900 text-white font-sans">
       <header className="flex-shrink-0 flex items-center justify-center p-4 border-b border-gray-700 shadow-md bg-gray-800">
         <h1 className="text-2xl font-bold tracking-wider">
           AI Frontend <span className="text-indigo-400">Builder</span>
         </h1>
       </header>
 
-      <main className="flex-grow flex flex-col lg:flex-row p-4 gap-4 overflow-hidden">
-        <div className={`flex flex-col ${editorPaneClasses} transition-all duration-300`}>
-          <CodeWorkspace 
-            files={files} 
-            setFiles={setFiles}
-            activeFileName={activeFileName}
-            setActiveFileName={setActiveFileName}
-            resetProject={resetProject}
-            snippets={snippets}
-            isSnippetsLoading={isSnippetsLoading}
-            snippetsError={snippetsError}
-            onFetchSnippets={handleFetchSnippets}
-          />
+      <main ref={mainContentRef} className="flex-grow flex flex-col lg:flex-row p-4 gap-4 overflow-hidden">
+        {/* Desktop - Resizable Panes */}
+        <div 
+            className={`hidden lg:flex flex-col transition-width duration-75 ${isFullscreen ? 'w-0' : ''}`} 
+            style={!isFullscreen ? { width: `${editorWidth}%` } : {}}
+        >
+            <CodeWorkspace 
+                files={files} 
+                setFiles={setFiles}
+                activeFileName={activeFileName}
+                setActiveFileName={setActiveFileName}
+                resetProject={resetProject}
+                snippets={snippets}
+                isSnippetsLoading={isSnippetsLoading}
+                snippetsError={snippetsError}
+                onFetchSnippets={handleFetchSnippets}
+            />
         </div>
-        <div className={`flex flex-col ${previewPaneClasses} transition-all duration-300`}>
+
+        <div 
+          onMouseDown={handleMouseDown}
+          className={`hidden lg:block w-2 bg-gray-700 hover:bg-indigo-500 rounded-full transition-colors cursor-col-resize flex-shrink-0 ${isFullscreen ? 'hidden' : ''}`}
+          aria-hidden="true"
+        ></div>
+
+        <div 
+            className={`hidden lg:flex flex-col transition-width duration-75 ${isFullscreen ? 'w-full' : ''}`}
+            style={!isFullscreen ? { width: `${100 - editorWidth}%` } : {}}
+        >
           <Preview 
             html={htmlContent} 
             isFullscreen={isFullscreen} 
             setIsFullscreen={setIsFullscreen}
           />
+        </div>
+
+        {/* Mobile - Tabbed View */}
+        <div className="flex lg:hidden flex-col flex-grow min-h-0">
+            <div className="flex-shrink-0 flex border-b border-gray-700">
+                <button 
+                    onClick={() => setMobileTab('editor')}
+                    className={`flex-1 py-3 text-center text-sm font-medium ${mobileTab === 'editor' ? 'bg-gray-800 text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400'}`}
+                >
+                    Editor
+                </button>
+                <button 
+                    onClick={() => setMobileTab('preview')}
+                    className={`flex-1 py-3 text-center text-sm font-medium ${mobileTab === 'preview' ? 'bg-gray-800 text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400'}`}
+                >
+                    Preview
+                </button>
+            </div>
+            <div className="flex-grow min-h-0">
+                {mobileTab === 'editor' && (
+                    <div className="h-full">
+                         <CodeWorkspace 
+                            files={files} 
+                            setFiles={setFiles}
+                            activeFileName={activeFileName}
+                            setActiveFileName={setActiveFileName}
+                            resetProject={resetProject}
+                            snippets={snippets}
+                            isSnippetsLoading={isSnippetsLoading}
+                            snippetsError={snippetsError}
+                            onFetchSnippets={handleFetchSnippets}
+                        />
+                    </div>
+                )}
+                {mobileTab === 'preview' && (
+                    <div className="h-full">
+                        <Preview 
+                            html={htmlContent} 
+                            isFullscreen={isFullscreen} 
+                            setIsFullscreen={setIsFullscreen}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
       </main>
 
@@ -320,7 +435,10 @@ Respond with a JSON object containing a "snippets" key, which is an array of cod
         <InputBar
           prompt={prompt}
           setPrompt={setPrompt}
-          onSubmit={handleSubmit}
+          onSubmit={() => {
+            submissionSourceRef.current = 'manual';
+            handleSubmit();
+          }}
           isLoading={isLoading}
           isListening={isListening}
           startListening={startListening}

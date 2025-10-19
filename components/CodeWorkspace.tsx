@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { MonacoEditor, EditorRef } from './MonacoEditor';
-import { FileIcon, PlusIcon, NewProjectIcon, CloseIcon, CodeBracketIcon, SpinnerIcon, HtmlIcon, CssIcon, JsIcon } from './Icons';
+import { FileIcon, PlusIcon, NewProjectIcon, CloseIcon, CodeBracketIcon, SpinnerIcon, HtmlIcon, CssIcon, JsIcon, UndoIcon, RedoIcon, DownloadIcon } from './Icons';
 import { NewFileModal, ConfirmNewProjectModal } from './Modals';
 
 export interface FileData {
@@ -96,6 +98,19 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
     editorRef.current?.insertText(snippet);
   };
 
+  const handleDownloadZip = async () => {
+    const zip = new JSZip();
+    files.forEach(file => {
+      zip.file(file.fileName, file.content);
+    });
+    try {
+      const blob = await zip.generateAsync({ type: 'blob' });
+      saveAs(blob, 'ai-frontend-project.zip');
+    } catch (error) {
+      console.error("Failed to generate zip file:", error);
+    }
+  };
+
   return (
     <div className="flex h-full bg-gray-800 rounded-lg shadow-inner border border-gray-700 overflow-hidden">
       {/* Sidebar */}
@@ -132,6 +147,13 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
                     aria-label="New file"
                 >
                     <PlusIcon className="w-5 h-5" />
+                </button>
+                <button
+                    onClick={handleDownloadZip}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700 p-1.5 rounded-md transition-colors"
+                    aria-label="Download project as zip"
+                >
+                    <DownloadIcon className="w-5 h-5" />
                 </button>
                 <button
                     onClick={() => setIsConfirmModalOpen(true)}
@@ -201,23 +223,41 @@ export const CodeWorkspace: React.FC<CodeWorkspaceProps> = ({
       </div>
 
       {/* Editor */}
-      <div className="flex-grow flex flex-col">
-          <div className="flex-shrink-0 flex items-center border-b border-gray-700 bg-gray-800 overflow-x-auto" aria-label="Open file tabs">
-            {files.map(file => (
-              <button
-                key={file.fileName}
-                onClick={() => setActiveFileName(file.fileName)}
-                className={`flex items-center space-x-2 px-4 py-2 text-sm border-r border-gray-700 transition-colors ${
-                  activeFileName === file.fileName
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
-                }`}
-                aria-pressed={activeFileName === file.fileName}
-              >
-                <GetFileIcon fileName={file.fileName} />
-                <span>{file.fileName}</span>
-              </button>
-            ))}
+      <div className="flex-grow flex flex-col min-w-0">
+          <div className="flex-shrink-0 flex items-center justify-between border-b border-gray-700 bg-gray-800">
+            <div className="flex items-center overflow-x-auto" aria-label="Open file tabs">
+              {files.map(file => (
+                <button
+                  key={file.fileName}
+                  onClick={() => setActiveFileName(file.fileName)}
+                  className={`flex items-center space-x-2 px-4 py-2 text-sm border-r border-gray-700 transition-colors ${
+                    activeFileName === file.fileName
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                  }`}
+                  aria-pressed={activeFileName === file.fileName}
+                >
+                  <GetFileIcon fileName={file.fileName} />
+                  <span>{file.fileName}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center px-2 space-x-1">
+                <button
+                    onClick={() => editorRef.current?.trigger('toolbar', 'undo', null)}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700 p-1.5 rounded-md transition-colors"
+                    aria-label="Undo"
+                >
+                    <UndoIcon className="w-5 h-5" />
+                </button>
+                <button
+                    onClick={() => editorRef.current?.trigger('toolbar', 'redo', null)}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700 p-1.5 rounded-md transition-colors"
+                    aria-label="Redo"
+                >
+                    <RedoIcon className="w-5 h-5" />
+                </button>
+            </div>
           </div>
           
           <div className="flex-grow relative">
